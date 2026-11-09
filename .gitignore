@@ -1,0 +1,38 @@
+# Built application files
+*.apk
+*.aab
+*.ap_
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+build/
+app/build/
+.gradle/
+.android/
+
+# Gradle files
+.gradle/
+buildOutputCleanup/
+configuration-cache/
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+local.properties
+.DS_Store
+*.log
+
+# Keystore
+*.jks
+*.keystore
+
+# Capture and editor exports (user media)
+/cache/

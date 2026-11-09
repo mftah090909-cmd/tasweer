@@ -27,25 +27,18 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android build tools
+      - name: Accept Android SDK licenses
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" > /dev/null
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
 
       - name: Grant execute permission for gradlew
-        run: chmod +x gradlew || true
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        run: chmod +x gradlew
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease --stacktrace --no-daemon || echo "Release build skipped"
+        run: ./gradlew assembleRelease --stacktrace --no-daemon
 
       - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4

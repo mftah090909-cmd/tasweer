@@ -10,8 +10,8 @@
 
 | النسخة / Build | الحجم / Size | رابط التنزيل / Download link |
 |---|---|---|
-| **LUMIX PRO Release 1.0.1** (موصى بها) | 9.8 MB | [تحميل APK الإصلاح](https://github.com/mftah090909-cmd/tasweer/releases/download/v1.0.1/LUMIX-PRO-v1.0.1-release.apk) |
-| **LUMIX PRO Debug 1.0.1** (نسخة التطوير) | 23 MB | [تحميل Debug APK](https://github.com/mftah090909-cmd/tasweer/releases/download/v1.0.1/LUMIX-PRO-v1.0.1-debug.apk) |
+| **LUMIX PRO Release 1.0.2** (موصى بها) | 9.8 MB | [تحميل APK الإصلاح](https://github.com/mftah090909-cmd/tasweer/releases/download/v1.0.2/LUMIX-PRO-v1.0.2-release.apk) |
+| **LUMIX PRO Debug 1.0.2** (نسخة التطوير) | 23 MB | [تحميل Debug APK](https://github.com/mftah090909-cmd/tasweer/releases/download/v1.0.2/LUMIX-PRO-v1.0.2-debug.apk) |
 
 > **طريقة التثبيت:** نزّل الملف ← اضغط عليه للتثبيت ← إذا ظهر تحذير فعّل «تثبيت التطبيقات من مصادر غير معروفة» للمتصفح.
 
@@ -213,7 +213,7 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 ./gradlew assembleDebug
 
 # 4) تجد ملف APK الجاهز للتثبيت هنا:
-# app/build/outputs/apk/debug/LUMIX-PRO-v1.0.1-debug.apk
+# app/build/outputs/apk/debug/LUMIX-PRO-v1.0.2-debug.apk
 ```
 
 ### البناء في Android Studio
@@ -222,7 +222,7 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 3. انتظر حتى يكتمل مزامنة Gradle، ثم اضغط **Run ▶** لتشغيل التطبيق على الجهاز.
 
 ### البناء التلقائي عبر GitHub Actions
-كل **Push** إلى فرع `main` يُطلق سير عمل تلقائي يبني **LUMIX-PRO-Debug-APK** ويرفعه كأثر (Artifact) قابل للتنزيل من صفحة Actions، وعند إنشاء Tag بصيغة `v1.0.1` يُنشأ Release تلقائي مع ملفات APK المرفقة.
+كل **Push** إلى فرع `main` يُطلق سير عمل تلقائي يبني **LUMIX-PRO-Debug-APK** ويرفعه كأثر (Artifact) قابل للتنزيل من صفحة Actions، وعند إنشاء Tag بصيغة `v1.0.2` يُنشأ Release تلقائي مع ملفات APK المرفقة.
 
 ---
 

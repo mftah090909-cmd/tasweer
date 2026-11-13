@@ -48,6 +48,7 @@ class CameraController(
     private var cameraProvider: ProcessCameraProvider? = null
     private var extensionsManager: ExtensionsManager? = null
     private var camera: Camera? = null
+    @Volatile private var cameraInitializationStarted = false
 
     private var preview: Preview? = null
     private var imageCapture: ImageCapture? = null
@@ -62,7 +63,7 @@ class CameraController(
     private val _state = MutableStateFlow(CameraState())
     val state: StateFlow<CameraState> = _state.asStateFlow()
 
-    private val inventory = hardwareManager.discoverInventory()
+    private val inventory by lazy(LazyThreadSafetyMode.NONE) { hardwareManager.discoverInventory() }
     private val analyzer = PreviewAnalyzer { frame -> onFrameAnalyzed(frame) }
 
     var onZebraFrame: ((android.graphics.Bitmap?) -> Unit)? = null
@@ -70,14 +71,12 @@ class CameraController(
     var onHistogramReady: ((IntArray) -> Unit)? = null
 
     init {
-        val initialCaps = inventory.rearCamera ?: inventory.frontCamera
         _state.update {
             it.copy(
-                activeFacing = initialCaps?.facing ?: LensFacing.BACK,
-                activeCapabilities = initialCaps,
-                exposureRange = initialCaps?.exposureCompensationRange ?: Range(-12, 12),
-                exposureStep = initialCaps?.exposureCompensationStep ?: (1f / 3f),
-                maxZoomRatio = initialCaps?.maxZoomRatio ?: 4f
+                activeFacing = LensFacing.BACK,
+                exposureRange = Range(-12, 12),
+                exposureStep = 1f / 3f,
+                maxZoomRatio = 4f
             )
         }
         // CameraX is initialized only after MainActivity has obtained the
@@ -86,22 +85,38 @@ class CameraController(
     }
 
     private fun initCamera() {
-        val providerFuture = ProcessCameraProvider.getInstance(context)
-        providerFuture.addListener({
-            runCatching {
-                cameraProvider = providerFuture.get()
-                initExtensionsThenBind()
-            }.onFailure { Log.e(tag, "Failed to get ProcessCameraProvider", it) }
-        }, ContextCompat.getMainExecutor(context))
+        if (cameraInitializationStarted || !PermissionHandler.hasCameraPermission(context)) return
+        cameraInitializationStarted = true
+        runCatching {
+            val providerFuture = ProcessCameraProvider.getInstance(context)
+            providerFuture.addListener({
+                runCatching {
+                    cameraProvider = providerFuture.get()
+                    initExtensionsThenBind()
+                }.onFailure { error ->
+                    cameraInitializationStarted = false
+                    Log.e(tag, "Failed to get ProcessCameraProvider", error)
+                }
+            }, ContextCompat.getMainExecutor(context))
+        }.onFailure { error ->
+            cameraInitializationStarted = false
+            Log.e(tag, "CameraX initialization failed", error)
+        }
     }
 
     private fun initExtensionsThenBind() {
         val provider = cameraProvider ?: return
-        val extFuture = ExtensionsManager.getInstanceAsync(context, provider)
-        extFuture.addListener({
-            extensionsManager = runCatching { extFuture.get() }.getOrNull()
+        runCatching {
+            val extFuture = ExtensionsManager.getInstanceAsync(context, provider)
+            extFuture.addListener({
+                extensionsManager = runCatching { extFuture.get() }.getOrNull()
+                bindUseCases()
+            }, ContextCompat.getMainExecutor(context))
+        }.onFailure { error ->
+            Log.w(tag, "Camera extensions unavailable; using standard CameraX", error)
+            extensionsManager = null
             bindUseCases()
-        }, ContextCompat.getMainExecutor(context))
+        }
     }
 
     fun attachPreview(surfaceProvider: Preview.SurfaceProvider) {
@@ -110,7 +125,29 @@ class CameraController(
     }
 
     fun bindUseCases() {
-        val provider = cameraProvider ?: return
+        if (!PermissionHandler.hasCameraPermission(context)) return
+        val provider = cameraProvider
+        if (provider == null) {
+            initCamera()
+            return
+        }
+        runCatching { bindUseCasesInternal(provider) }
+            .onFailure { error -> Log.e(tag, "Camera use-case setup failed; keeping UI alive", error) }
+    }
+
+    private fun bindUseCasesInternal(provider: ProcessCameraProvider) {
+        val discovered = inventory
+        val initialCaps = discovered.rearCamera ?: discovered.frontCamera
+        if (_state.value.activeCapabilities == null && initialCaps != null) {
+            _state.update {
+                it.copy(
+                    activeCapabilities = initialCaps,
+                    exposureRange = initialCaps.exposureCompensationRange,
+                    exposureStep = initialCaps.exposureCompensationStep,
+                    maxZoomRatio = initialCaps.maxZoomRatio
+                )
+            }
+        }
         val s = _state.value
 
         val baseSelector = when (s.activeFacing) {
@@ -119,7 +156,9 @@ class CameraController(
             else -> CameraSelector.DEFAULT_BACK_CAMERA
         }
 
-        val finalSelector = applyExtensionSelector(baseSelector, s.activeMode) ?: baseSelector
+        val finalSelector = runCatching {
+            applyExtensionSelector(baseSelector, s.activeMode) ?: baseSelector
+        }.getOrDefault(baseSelector)
 
         // 1) Preview
         val previewBuilder = Preview.Builder()

@@ -71,10 +71,11 @@ class MainActivity : ComponentActivity() {
         setContent { AppUi() }
 
         if (!hasCameraPermission) {
-            val needed = (PermissionHandler.REQUIRED_CAMERA_PERMISSIONS.toList() +
-                PermissionHandler.mediaPermissions().toList() +
-                PermissionHandler.OPTIONAL_LOCATION_PERMISSIONS.toList() +
-                listOf(android.Manifest.permission.RECORD_AUDIO))
+            // Only request the permission required to open the camera. Media,
+            // location and microphone are optional and are requested when the
+            // corresponding feature is used, avoiding startup failures on
+            // different Android permission models.
+            val needed = PermissionHandler.REQUIRED_CAMERA_PERMISSIONS
                 .filter { !PermissionHandler.isGranted(this, it) }
                 .toTypedArray()
             permissionLauncher.launch(needed)

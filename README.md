@@ -213,7 +213,7 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 ./gradlew assembleDebug
 
 # 4) تجد ملف APK الجاهز للتثبيت هنا:
-# app/build/outputs/apk/debug/app-debug.apk
+# app/build/outputs/apk/debug/LUMIX-PRO-v1.0.1-debug.apk
 ```
 
 ### البناء في Android Studio
@@ -222,7 +222,7 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 3. انتظر حتى يكتمل مزامنة Gradle، ثم اضغط **Run ▶** لتشغيل التطبيق على الجهاز.
 
 ### البناء التلقائي عبر GitHub Actions
-كل **Push** إلى فرع `main` يُطلق سير عمل تلقائي يبني **LUMIX-PRO-Debug-APK** ويرفعه كأثر (Artifact) قابل للتنزيل من صفحة Actions، وعند إنشاء Tag بصيغة `v1.0.0` يُنشأ Release تلقائي مع ملفات APK المرفقة.
+كل **Push** إلى فرع `main` يُطلق سير عمل تلقائي يبني **LUMIX-PRO-Debug-APK** ويرفعه كأثر (Artifact) قابل للتنزيل من صفحة Actions، وعند إنشاء Tag بصيغة `v1.0.1` يُنشأ Release تلقائي مع ملفات APK المرفقة.
 
 ---
 

@@ -2,6 +2,7 @@ package com.lumix.pro.camera
 
 import android.content.ContentValues
 import android.content.Context
+import android.annotation.SuppressLint
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
@@ -23,6 +24,7 @@ import androidx.camera.video.*
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.lumix.pro.modes.CameraMode
+import com.lumix.pro.utils.PermissionHandler
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -78,7 +80,9 @@ class CameraController(
                 maxZoomRatio = initialCaps?.maxZoomRatio ?: 4f
             )
         }
-        initCamera()
+        // CameraX is initialized only after MainActivity has obtained the
+        // runtime CAMERA permission. Starting it in the constructor can crash
+        // on a cold launch on devices that enforce permission checks.
     }
 
     private fun initCamera() {
@@ -499,6 +503,7 @@ class CameraController(
         next(0)
     }
 
+    @SuppressLint("MissingPermission")
     fun startVideoRecording(onSaved: (Uri) -> Unit) {
         val vc = videoCapture ?: return
         val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
@@ -516,7 +521,7 @@ class CameraController(
         ).setContentValues(cv).build()
 
         var recBuilder = vc.output.prepareRecording(context, mediaStoreOutput)
-        if (_state.value.audioEnabled) {
+        if (_state.value.audioEnabled && PermissionHandler.hasAudioPermission(context)) {
             recBuilder = recBuilder.withAudioEnabled()
         }
 

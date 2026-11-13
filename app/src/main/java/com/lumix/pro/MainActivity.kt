@@ -63,7 +63,10 @@ class MainActivity : ComponentActivity() {
         }
 
         hasCameraPermission = PermissionHandler.hasCameraPermission(this)
-        if (hasCameraPermission) startSensors()
+        if (hasCameraPermission) {
+            controller.bindUseCases()
+            startSensors()
+        }
 
         setContent { AppUi() }
 

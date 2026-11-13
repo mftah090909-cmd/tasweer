@@ -61,10 +61,14 @@ fun LumixMainContent(
     val navStack = remember { mutableStateListOf<Screen>(Screen.Camera) }
     val currentScreen = navStack.lastOrNull() ?: Screen.Camera
 
+    fun goBack() {
+        if (navStack.size > 1) navStack.removeAt(navStack.lastIndex)
+    }
+
     var latestThumb by remember { mutableStateOf<Uri?>(null) }
     LaunchedEffect(Unit) { latestThumb = repository.getLatestThumbnail() }
 
-    BackHandler(enabled = navStack.size > 1) { navStack.removeLast() }
+    BackHandler(enabled = navStack.size > 1) { goBack() }
 
     if (!hasCameraPermission) {
         PermissionPrompt(isArabic = isArabic, onGrant = onRequestPermission)
@@ -110,101 +114,101 @@ fun LumixMainContent(
                 repository = repository,
                 isArabic = isArabic,
                 onOpenDetail = { navStack += Screen.MediaDetail(it) },
-                onBack = { navStack.removeLast() }
+                onBack = { goBack() }
             )
             is Screen.MediaDetail -> MediaDetailScreen(
                 item = screen.item,
                 repository = repository,
                 isArabic = isArabic,
-                onBack = { navStack.removeLast() },
+                onBack = { goBack() },
                 onEnhance = { navStack += Screen.AiEnhancer(screen.item.contentUri) },
                 onEdit = {
                     navStack += if (screen.item.isVideo) Screen.VideoEditor(screen.item.contentUri)
                     else Screen.PhotoEditor(screen.item.contentUri)
                 },
-                onDeleted = { navStack.removeLast() }
+                onDeleted = { goBack() }
             )
             is Screen.PhotoEditor -> PhotoEditorScreen(
                 imageUri = screen.uri,
                 isArabic = isArabic,
-                onBack = { navStack.removeLast() },
+                onBack = { goBack() },
                 onExported = { uri ->
                     latestThumb = uri
-                    navStack.removeLast()
+                    goBack()
                 }
             )
             is Screen.VideoEditor -> VideoEditorScreen(
                 videoUri = screen.uri,
                 isArabic = isArabic,
-                onBack = { navStack.removeLast() },
-                onExported = { navStack.removeLast() }
+                onBack = { goBack() },
+                onExported = { goBack() }
             )
             is Screen.AiEnhancer -> AiEnhancerScreen(
                 imageUri = screen.uri,
                 isArabic = isArabic,
-                onBack = { navStack.removeLast() },
+                onBack = { goBack() },
                 onSaved = { uri ->
                     latestThumb = uri
-                    navStack.removeLast()
+                    goBack()
                 }
             )
             Screen.Presets -> PresetsScreen(
                 controller = controller,
                 isArabic = isArabic,
-                onBack = { navStack.removeLast() },
-                onPresetApplied = { navStack.removeLast() }
+                onBack = { goBack() },
+                onPresetApplied = { goBack() }
             )
             Screen.Diagnostics -> DiagnosticsScreen(
                 state = controller.state.collectAsState().value,
                 isArabic = isArabic,
-                onBack = { navStack.removeLast() }
+                onBack = { goBack() }
             )
             Screen.GoldenHour -> GoldenHourScreen(
                 isArabic = isArabic,
-                onBack = { navStack.removeLast() }
+                onBack = { goBack() }
             )
             Screen.Storage -> StorageScreen(
                 isArabic = isArabic,
-                onBack = { navStack.removeLast() }
+                onBack = { goBack() }
             )
             Screen.Settings -> SettingsScreen(
                 isArabic = isArabic,
-                onBack = { navStack.removeLast() }
+                onBack = { goBack() }
             )
             Screen.Timelapse -> TimelapseScreen(
                 controller = controller,
                 isArabic = isArabic,
-                onClose = { navStack.removeLast() },
+                onClose = { goBack() },
                 onSaved = { uri ->
                     latestThumb = uri
-                    navStack.removeLast()
+                    goBack()
                 }
             )
             Screen.LongExposure -> LongExposureScreen(
                 controller = controller,
                 isArabic = isArabic,
-                onClose = { navStack.removeLast() },
+                onClose = { goBack() },
                 onSaved = { uri ->
                     latestThumb = uri
-                    navStack.removeLast()
+                    goBack()
                 }
             )
             Screen.Panorama -> PanoramaScreen(
                 controller = controller,
                 isArabic = isArabic,
-                onClose = { navStack.removeLast() },
+                onClose = { goBack() },
                 onSaved = { uri ->
                     latestThumb = uri
-                    navStack.removeLast()
+                    goBack()
                 }
             )
             Screen.DocumentScan -> DocumentScanScreen(
                 controller = controller,
                 isArabic = isArabic,
-                onClose = { navStack.removeLast() },
+                onClose = { goBack() },
                 onSaved = { uri ->
                     latestThumb = uri
-                    navStack.removeLast()
+                    goBack()
                 }
             )
         }

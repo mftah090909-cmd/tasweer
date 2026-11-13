@@ -10,8 +10,8 @@
 
 | النسخة / Build | الحجم / Size | رابط التنزيل / Download link |
 |---|---|---|
-| **LUMIX PRO Release 1.0.0** (موصى بها) | 9.8 MB | [تحميل APK النسخة النهائية](https://files.manuscdn.com/user_upload_by_module/session_file/310519664073133806/docpzAeqQuMSasPt.apk) |
-| **LUMIX PRO Debug 1.0.0** (نسخة التطوير) | 23 MB | [تحميل Debug APK](https://files.manuscdn.com/user_upload_by_module/session_file/310519664073133806/PRYZoJXcykUtatNl.apk) |
+| **LUMIX PRO Release 1.0.1** (موصى بها) | 9.8 MB | [تحميل APK الإصلاح](https://github.com/mftah090909-cmd/tasweer/releases/download/v1.0.1/LUMIX-PRO-v1.0.1-release.apk) |
+| **LUMIX PRO Debug 1.0.1** (نسخة التطوير) | 23 MB | [تحميل Debug APK](https://github.com/mftah090909-cmd/tasweer/releases/download/v1.0.1/LUMIX-PRO-v1.0.1-debug.apk) |
 
 > **طريقة التثبيت:** نزّل الملف ← اضغط عليه للتثبيت ← إذا ظهر تحذير فعّل «تثبيت التطبيقات من مصادر غير معروفة» للمتصفح.
 

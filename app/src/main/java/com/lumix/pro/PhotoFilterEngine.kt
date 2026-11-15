@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -57,10 +58,13 @@ object PhotoFilterEngine {
         )
     }
 
-    suspend fun processAndSave(context: Context, source: Uri?, filter: String, brightness: Float, contrast: Float, sharpness: Float, shadows: Float = 0f, highlights: Float = 0f, saturation: Float = 1f, temperature: Float = 0f, grain: Float = 0f): Uri? = withContext(Dispatchers.IO) {
+    suspend fun processAndSave(context: Context, source: Uri?, filter: String, brightness: Float, contrast: Float, sharpness: Float, shadows: Float = 0f, highlights: Float = 0f, saturation: Float = 1f, temperature: Float = 0f, grain: Float = 0f, rotation: Int = 0): Uri? = withContext(Dispatchers.IO) {
         source ?: return@withContext null
         val sourceBitmap = context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it) } ?: return@withContext null
         val processed = process(sourceBitmap, recipe(filter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain))
+        val finalBitmap = if (rotation % 360 != 0) {
+            Bitmap.createBitmap(processed, 0, 0, processed.width, processed.height, Matrix().apply { postRotate(rotation.toFloat()) }, true).also { processed.recycle() }
+        } else processed
         val values = ContentValues().apply {
             val stamp = System.currentTimeMillis()
             put(MediaStore.Images.Media.DISPLAY_NAME, "LUMIX_EDIT_$stamp.jpg")
@@ -69,9 +73,9 @@ object PhotoFilterEngine {
         }
         val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         if (uri == null) return@withContext null
-        val ok = context.contentResolver.openOutputStream(uri)?.use { processed.compress(Bitmap.CompressFormat.JPEG, 94, it) } == true
+        val ok = context.contentResolver.openOutputStream(uri)?.use { finalBitmap.compress(Bitmap.CompressFormat.JPEG, 94, it) } == true
         if (!ok) context.contentResolver.delete(uri, null, null)
-        processed.recycle()
+        finalBitmap.recycle()
         sourceBitmap.recycle()
         if (ok) uri else null
     }

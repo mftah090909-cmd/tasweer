@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 
 @Composable
-fun StudioEditor(uri: Uri, filter: String, onFilter: (String) -> Unit, onClose: () -> Unit, onApply: () -> Unit) {
+fun StudioEditor(uri: Uri, filter: String, onFilter: (String) -> Unit, onRotate: () -> Unit, onClose: () -> Unit, onApply: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color(0xF50B1117)).padding(18.dp)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
@@ -47,7 +47,10 @@ fun StudioEditor(uri: Uri, filter: String, onFilter: (String) -> Unit, onClose: 
                 }
             }
             Spacer(Modifier.height(16.dp))
-            Button(onClick = onApply, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4DE1C1))) { Text("حفظ نسخة معدلة", color = Color(0xFF071412)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = onRotate) { Text("تدوير 90°") }
+                Button(onClick = onApply, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4DE1C1))) { Text("حفظ نسخة معدلة", color = Color(0xFF071412)) }
+            }
         }
     }
 }

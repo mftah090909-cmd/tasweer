@@ -129,6 +129,11 @@ private fun CameraHome() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
+    var editorOpen by remember { mutableStateOf(false) }
+    var lastUri by remember { mutableStateOf<Uri?>(null) }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) { lastUri = uri; editorOpen = true }
+    }
     val previewView = remember { PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE } }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
@@ -155,9 +160,8 @@ private fun CameraHome() {
     var grain by remember { mutableStateOf(0f) }
     var showFilterPanel by remember { mutableStateOf(false) }
     var processing by remember { mutableStateOf(false) }
-    var editorOpen by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("جاري تجهيز الكاميرا…") }
-    var lastUri by remember { mutableStateOf<Uri?>(null) }
+    var rotationDegrees by remember { mutableStateOf(0) }
 
     LaunchedEffect(isFront, quality, flash) {
         val future = runCatching { ProcessCameraProvider.getInstance(context) }.getOrNull() ?: run {
@@ -235,12 +239,16 @@ private fun CameraHome() {
                             Slider(value = temperature, onValueChange = { temperature = it }, valueRange = -1f..1f, modifier = Modifier.fillMaxWidth())
                             Text("حبيبات سينمائية ${"%.2f".format(grain)}", color = Color.White, modifier = Modifier.fillMaxWidth())
                             Slider(value = grain, onValueChange = { grain = it }, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { selectedFilter = "Clean"; brightness = .05f; contrast = 1.1f; shadows = .14f; highlights = -.12f; saturation = 1.08f; sharpness = .35f }) { Text("تحسين تلقائي") }
+                                Button(onClick = { brightness = 0f; contrast = 1f; sharpness = .18f; shadows = 0f; highlights = 0f; saturation = 1f; temperature = 0f; grain = 0f; selectedFilter = "Natural"; rotationDegrees = 0 }) { Text("إعادة ضبط") }
+                            }
                             if (lastUri != null && !processing) {
                                 Button(onClick = {
                                     processing = true
                                     status = "تطبيق التعديلات…"
                                     scope.launch {
-                                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain)
+                                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain, rotationDegrees)
                                         if (edited != null) lastUri = edited
                                         processing = false
                                         status = if (edited != null) "تم حفظ تعديل جديد" else "تعذر تطبيق التعديل"
@@ -270,6 +278,7 @@ private fun CameraHome() {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 28.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     IconButton(onClick = { lastUri?.let { uri -> context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, context.contentResolver.getType(uri) ?: "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } }) { Icon(Icons.Default.PhotoLibrary, "فتح آخر لقطة", tint = Color.White, modifier = Modifier.size(30.dp)) }
+                    Button(onClick = { pickImage.launch("image/*") }, colors = ButtonDefaults.buttonColors(containerColor = Color(0x6628D7C0))) { Text("استيراد") }
                     Button(
                         onClick = {
                             if (mode == "VIDEO") {
@@ -303,12 +312,13 @@ private fun CameraHome() {
                 uri = lastUri!!,
                 filter = selectedFilter,
                 onFilter = { selectedFilter = it },
+                onRotate = { rotationDegrees = (rotationDegrees + 90) % 360 },
                 onClose = { editorOpen = false },
                 onApply = {
                     processing = true
                     status = "تطبيق تعديلات Studio…"
                     scope.launch {
-                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain)
+                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain, rotationDegrees)
                         if (edited != null) lastUri = edited
                         processing = false
                         status = if (edited != null) "تم حفظ الصورة المعدلة" else "تعذر حفظ التعديل"

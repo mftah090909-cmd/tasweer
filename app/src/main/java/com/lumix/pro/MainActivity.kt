@@ -45,6 +45,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
@@ -162,6 +164,9 @@ private fun CameraHome() {
     var processing by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("جاري تجهيز الكاميرا…") }
     var rotationDegrees by remember { mutableStateOf(0) }
+    var focusLocked by remember { mutableStateOf(false) }
+    var lastFocusPoint by remember { mutableStateOf("تلقائي") }
+    val prefs = remember { context.getSharedPreferences("lumix_preset", 0) }
 
     LaunchedEffect(isFront, quality, flash) {
         val future = runCatching { ProcessCameraProvider.getInstance(context) }.getOrNull() ?: run {
@@ -196,7 +201,20 @@ private fun CameraHome() {
     DisposableEffect(Unit) { onDispose { recording?.stop() } }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView({ previewView }, Modifier.fillMaxSize())
+        AndroidView(
+            { previewView },
+            Modifier.fillMaxSize().pointerInput(camera, focusLocked) {
+                detectTapGestures { offset ->
+                    val activeCamera = camera ?: return@detectTapGestures
+                    val point = previewView.meteringPointFactory.createPoint(offset.x, offset.y)
+                    val action = androidx.camera.core.FocusMeteringAction.Builder(point)
+                        .setAutoCancelDuration(if (focusLocked) 1 else 4, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+                    activeCamera.cameraControl.startFocusAndMetering(action)
+                    lastFocusPoint = "تركيز ${offset.x.toInt()}×${offset.y.toInt()}"
+                }
+            }
+        )
         LiveFilterOverlay(selectedFilter, brightness + shadows * .18f - highlights * .12f)
         if (grid) CompositionGrid(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().padding(top = 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
@@ -206,7 +224,7 @@ private fun CameraHome() {
                 IconButton(onClick = { isFront = !isFront }) { Icon(Icons.Default.Cameraswitch, "تبديل العدسة", tint = Color.White) }
             }
             if (showControls) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).background(Color(0xB8172028), RoundedCornerShape(28.dp)).padding(12.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).liquidGlass(RoundedCornerShape(28.dp)).padding(12.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("PHOTO" to "صورة", "VIDEO" to "فيديو", "PRO" to "Pro").forEach { (key, label) ->
                             FilterChip(selected = mode == key, onClick = { mode = key }, label = { Text(label) })
@@ -243,6 +261,17 @@ private fun CameraHome() {
                                 Button(onClick = { selectedFilter = "Clean"; brightness = .05f; contrast = 1.1f; shadows = .14f; highlights = -.12f; saturation = 1.08f; sharpness = .35f }) { Text("تحسين تلقائي") }
                                 Button(onClick = { brightness = 0f; contrast = 1f; sharpness = .18f; shadows = 0f; highlights = 0f; saturation = 1f; temperature = 0f; grain = 0f; selectedFilter = "Natural"; rotationDegrees = 0 }) { Text("إعادة ضبط") }
                             }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = {
+                                    prefs.edit().putString("filter", selectedFilter).putFloat("brightness", brightness).putFloat("contrast", contrast).putFloat("sharpness", sharpness).putFloat("shadows", shadows).putFloat("highlights", highlights).putFloat("saturation", saturation).putFloat("temperature", temperature).putFloat("grain", grain).apply()
+                                    status = "تم حفظ الوصفة"
+                                }) { Text("حفظ الوصفة") }
+                                Button(onClick = {
+                                    selectedFilter = prefs.getString("filter", selectedFilter) ?: selectedFilter
+                                    brightness = prefs.getFloat("brightness", brightness); contrast = prefs.getFloat("contrast", contrast); sharpness = prefs.getFloat("sharpness", sharpness); shadows = prefs.getFloat("shadows", shadows); highlights = prefs.getFloat("highlights", highlights); saturation = prefs.getFloat("saturation", saturation); temperature = prefs.getFloat("temperature", temperature); grain = prefs.getFloat("grain", grain)
+                                    status = "تم استدعاء الوصفة"
+                                }) { Text("استدعاء الوصفة") }
+                            }
                             if (lastUri != null && !processing) {
                                 Button(onClick = {
                                     processing = true
@@ -263,6 +292,10 @@ private fun CameraHome() {
                         IconButton(onClick = { grid = !grid }) { Icon(Icons.Default.GridOn, "شبكة التكوين", tint = if (grid) Color(0xFF66E6FF) else Color.White) }
                         IconButton(onClick = { timer = when (timer) { 0 -> 3; 3 -> 5; 5 -> 10; else -> 0 } }) { Icon(Icons.Default.Timer, "المؤقت", tint = if (timer > 0) Color(0xFF66E6FF) else Color.White) }
                         Text(if (timer == 0) "مؤقت: off" else "مؤقت: ${timer}s", color = Color.White)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        GlassLabel("${if (focusLocked) "قفل" else "AF/AE"} · $lastFocusPoint", focusLocked)
+                        Button(onClick = { focusLocked = !focusLocked; status = if (focusLocked) "تم قفل التركيز والتعريض" else "التركيز تلقائي" }) { Text(if (focusLocked) "فتح القفل" else "قفل AF/AE") }
                     }
                     Text("زوم ${"%.1f".format(zoom)}x", color = Color.White, modifier = Modifier.fillMaxWidth())
                     Slider(value = zoom, onValueChange = { zoom = it }, valueRange = 1f..(camera?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 4f), modifier = Modifier.fillMaxWidth())
@@ -313,6 +346,12 @@ private fun CameraHome() {
                 filter = selectedFilter,
                 onFilter = { selectedFilter = it },
                 onRotate = { rotationDegrees = (rotationDegrees + 90) % 360 },
+                brightness = brightness, onBrightness = { brightness = it },
+                contrast = contrast, onContrast = { contrast = it },
+                sharpness = sharpness, onSharpness = { sharpness = it },
+                shadows = shadows, onShadows = { shadows = it },
+                highlights = highlights, onHighlights = { highlights = it },
+                saturation = saturation, onSaturation = { saturation = it },
                 onClose = { editorOpen = false },
                 onApply = {
                     processing = true
@@ -347,6 +386,11 @@ private fun LiveFilterOverlay(filter: String, brightness: Float) {
         "Warm" -> Color(0xFFFF9D5C)
         "Cool" -> Color(0xFF5CA9FF)
         "Cinematic" -> Color(0xFFB87555)
+        "Teal Orange" -> Color(0xFF2AAFA0)
+        "Golden Hour" -> Color(0xFFFFB347)
+        "Moody" -> Color(0xFF35404A)
+        "Pastel" -> Color(0xFFF2B6C6)
+        "Vapor" -> Color(0xFF9C5CFF)
         "Noir" -> Color.Black
         "Neon" -> Color(0xFFB44CFF)
         "Faded" -> Color(0xFFD9C3A5)

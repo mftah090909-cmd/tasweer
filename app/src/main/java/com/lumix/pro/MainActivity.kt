@@ -20,6 +20,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
+import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
@@ -43,6 +44,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
@@ -140,6 +142,12 @@ private fun CameraHome() {
     var exposure by remember { mutableStateOf(0f) }
     var quality by remember { mutableStateOf("FHD") }
     var showControls by remember { mutableStateOf(true) }
+    var selectedFilter by remember { mutableStateOf("Natural") }
+    var brightness by remember { mutableStateOf(0f) }
+    var contrast by remember { mutableStateOf(1f) }
+    var sharpness by remember { mutableStateOf(.18f) }
+    var showFilterPanel by remember { mutableStateOf(false) }
+    var processing by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("جاري تجهيز الكاميرا…") }
     var lastUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -157,7 +165,7 @@ private fun CameraHome() {
                     .build()
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
                 val q = when (quality) { "4K" -> Quality.UHD; "HD" -> Quality.HD; "SD" -> Quality.SD; else -> Quality.FHD }
-                val recorder = Recorder.Builder().setQualitySelector(QualitySelector.from(q)).build()
+                val recorder = Recorder.Builder().setQualitySelector(QualitySelector.from(q, FallbackStrategy.lowerQualityThan(q))).build()
                 val video = VideoCapture.withOutput(recorder)
                 provider.unbindAll()
                 val bound = provider.bindToLifecycle(lifecycleOwner, selector, preview, image, video)
@@ -177,6 +185,7 @@ private fun CameraHome() {
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView({ previewView }, Modifier.fillMaxSize())
+        LiveFilterOverlay(selectedFilter, brightness)
         if (grid) CompositionGrid(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().padding(top = 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
@@ -185,10 +194,41 @@ private fun CameraHome() {
                 IconButton(onClick = { isFront = !isFront }) { Icon(Icons.Default.Cameraswitch, "تبديل العدسة", tint = Color.White) }
             }
             if (showControls) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).background(Color(0xB8172028), RoundedCornerShape(28.dp)).padding(12.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("PHOTO" to "صورة", "VIDEO" to "فيديو", "PRO" to "Pro").forEach { (key, label) ->
                             FilterChip(selected = mode == key, onClick = { mode = key }, label = { Text(label) })
+                        }
+                    }
+                    if (mode != "VIDEO") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("فلتر المعاينة", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                            FilterChip(selected = showFilterPanel, onClick = { showFilterPanel = !showFilterPanel }, label = { Text(if (showFilterPanel) "إخفاء" else "ضبط") })
+                        }
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            listOf("Natural", "Clean", "Cinematic", "Warm", "Cool", "Noir", "Neon", "Faded").forEach { name ->
+                                FilterChip(selected = selectedFilter == name, onClick = { selectedFilter = name }, label = { Text(name) })
+                            }
+                        }
+                        if (showFilterPanel) {
+                            Text("سطوع ${"%.2f".format(brightness)}", color = Color.White, modifier = Modifier.fillMaxWidth())
+                            Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -.35f.. .35f, modifier = Modifier.fillMaxWidth())
+                            Text("تباين ${"%.2f".format(contrast)}", color = Color.White, modifier = Modifier.fillMaxWidth())
+                            Slider(value = contrast, onValueChange = { contrast = it }, valueRange = .65f..1.45f, modifier = Modifier.fillMaxWidth())
+                            Text("حدة ${"%.2f".format(sharpness)}", color = Color.White, modifier = Modifier.fillMaxWidth())
+                            Slider(value = sharpness, onValueChange = { sharpness = it }, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
+                            if (lastUri != null && !processing) {
+                                Button(onClick = {
+                                    processing = true
+                                    status = "تطبيق التعديلات…"
+                                    scope.launch {
+                                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness)
+                                        if (edited != null) lastUri = edited
+                                        processing = false
+                                        status = if (edited != null) "تم حفظ تعديل جديد" else "تعذر تطبيق التعديل"
+                                    }
+                                }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4DE1C1))) { Text("تطبيق على آخر لقطة", color = Color(0xFF071412)) }
+                            }
                         }
                     }
                     Spacer(Modifier.height(6.dp))
@@ -224,13 +264,20 @@ private fun CameraHome() {
                                 }
                             } else {
                                 val capture = imageCapture ?: return@Button
-                                scope.launch { if (timer > 0) delay(timer * 1000L); val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()); val values = ContentValues().apply { put(MediaStore.Images.Media.DISPLAY_NAME, "LUMIX_$name.jpg"); put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg"); if (Build.VERSION.SDK_INT >= 29) put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/LUMIX_PRO") }; val output = ImageCapture.OutputFileOptions.Builder(context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values).build(); capture.takePicture(output, ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageSavedCallback { override fun onImageSaved(result: ImageCapture.OutputFileResults) { lastUri = result.savedUri; status = "تم حفظ الصورة" }; override fun onError(exception: ImageCaptureException) { status = "فشل حفظ الصورة" } }) }
+                                scope.launch { if (timer > 0) delay(timer * 1000L); val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()); val values = ContentValues().apply { put(MediaStore.Images.Media.DISPLAY_NAME, "LUMIX_$name.jpg"); put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg"); if (Build.VERSION.SDK_INT >= 29) put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/LUMIX_PRO") }; val output = ImageCapture.OutputFileOptions.Builder(context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values).build(); capture.takePicture(output, ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageSavedCallback { override fun onImageSaved(result: ImageCapture.OutputFileResults) { lastUri = result.savedUri; status = "تتم معالجة ${selectedFilter}…"; processing = true; scope.launch { val edited = PhotoFilterEngine.processAndSave(context, result.savedUri, selectedFilter, brightness, contrast, sharpness); if (edited != null) lastUri = edited; processing = false; status = if (edited != null) "تم حفظ الصورة والنسخة المعدلة" else "تم حفظ الصورة الأصلية" } }; override fun onError(exception: ImageCaptureException) { status = "فشل حفظ الصورة" } }) }
                             }
                         }, modifier = Modifier.size(82.dp), shape = CircleShape, colors = ButtonDefaults.buttonColors(if (isRecording) Color(0xFFE53935) else Color.White)
                     ) { Icon(if (isRecording) Icons.Default.VideocamOff else if (mode == "VIDEO") Icons.Default.Videocam else Icons.Default.CameraAlt, "التقاط", tint = if (isRecording || mode == "VIDEO") Color.White else Color.Black, modifier = Modifier.size(34.dp)) }
                     IconButton(onClick = { showControls = !showControls }) { Text(if (showControls) "−" else "+", color = Color.White, style = MaterialTheme.typography.headlineMedium) }
                 }
-                Text(if (lastUri == null) "جاهز للتصوير" else "تم الحفظ في المعرض", color = Color.White)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (processing) "جاري إنشاء النسخة المعدلة…" else if (lastUri == null) "جاهز للتصوير" else "تم الحفظ في المعرض", color = Color.White)
+                    if (lastUri != null && !processing) {
+                        Text("تعديل آخر لقطة", color = Color(0xFF9BEFFF), modifier = Modifier.clickable {
+                            showControls = true; showFilterPanel = true
+                        })
+                    }
+                }
             }
         }
     }
@@ -245,4 +292,20 @@ private fun CompositionGrid(modifier: Modifier) {
         drawLine(Color.White.copy(alpha = .35f), Offset(0f, thirdH), Offset(size.width, thirdH), strokeWidth = 1f)
         drawLine(Color.White.copy(alpha = .35f), Offset(0f, thirdH * 2), Offset(size.width, thirdH * 2), strokeWidth = 1f)
     }
+}
+
+@Composable
+private fun LiveFilterOverlay(filter: String, brightness: Float) {
+    val tint = when (filter) {
+        "Warm" -> Color(0xFFFF9D5C)
+        "Cool" -> Color(0xFF5CA9FF)
+        "Cinematic" -> Color(0xFFB87555)
+        "Noir" -> Color.Black
+        "Neon" -> Color(0xFFB44CFF)
+        "Faded" -> Color(0xFFD9C3A5)
+        "Clean" -> Color.White
+        else -> Color.Transparent
+    }
+    val alpha = when (filter) { "Noir" -> .22f; "Natural" -> 0f; else -> .10f } + (brightness * .10f)
+    if (alpha > 0f) Box(Modifier.fillMaxSize().background(tint.copy(alpha = alpha.coerceIn(0f, .28f))))
 }

@@ -2,21 +2,22 @@ package com.lumix.pro
 
 import android.Manifest
 import android.content.ContentValues
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
@@ -25,7 +26,9 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,18 +39,29 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.FlashAuto
+import androidx.compose.material.icons.filled.FlashOff
+import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -57,18 +71,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,38 +99,22 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun StableCameraApp() {
     val context = LocalContext.current
-    var cameraGranted by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
-    }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { cameraGranted = it }
-
+    var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
     MaterialTheme(colorScheme = darkColorScheme()) {
-        Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
-            if (cameraGranted) {
-                CameraHome()
-            } else {
-                PermissionScreen { permissionLauncher.launch(Manifest.permission.CAMERA) }
-            }
+        Surface(Modifier.fillMaxSize(), color = Color.Black) {
+            if (granted) CameraHome() else PermissionScreen { request.launch(Manifest.permission.CAMERA) }
         }
     }
 }
 
 @Composable
 private fun PermissionScreen(onGrant: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF101218)),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier.padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF101218)), contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Icon(Icons.Default.CameraAlt, null, tint = Color(0xFF66E6FF), modifier = Modifier.size(64.dp))
             Text("لومكس برو", style = MaterialTheme.typography.headlineSmall)
-            Text("اسمح للتطبيق باستخدام الكاميرا حتى تبدأ التصوير.", color = Color.LightGray)
+            Text("اسمح بالكاميرا لفتح الاستوديو والتصوير.", color = Color.LightGray)
             Button(onClick = onGrant) { Text("السماح بالكاميرا") }
         }
     }
@@ -121,114 +124,125 @@ private fun PermissionScreen(onGrant: () -> Unit) {
 private fun CameraHome() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
     val previewView = remember { PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE } }
+    var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     var recording by remember { mutableStateOf<Recording?>(null) }
     var isRecording by remember { mutableStateOf(false) }
     var isFront by remember { mutableStateOf(false) }
+    var mode by remember { mutableStateOf("PHOTO") }
+    var flash by remember { mutableStateOf(0) }
+    var timer by remember { mutableStateOf(0) }
+    var grid by remember { mutableStateOf(false) }
+    var zoom by remember { mutableStateOf(1f) }
+    var exposure by remember { mutableStateOf(0f) }
+    var quality by remember { mutableStateOf("FHD") }
+    var showControls by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf("جاري تجهيز الكاميرا…") }
-    var lastUri by remember { mutableStateOf<String?>(null) }
+    var lastUri by remember { mutableStateOf<Uri?>(null) }
 
-    LaunchedEffect(isFront) {
-        val future = runCatching { ProcessCameraProvider.getInstance(context) }.getOrNull()
-        if (future == null) {
-            status = "الكاميرا غير متاحة على هذا الجهاز"
-            return@LaunchedEffect
+    LaunchedEffect(isFront, quality, flash) {
+        val future = runCatching { ProcessCameraProvider.getInstance(context) }.getOrNull() ?: run {
+            status = "الكاميرا غير متاحة"; return@LaunchedEffect
         }
         future.addListener({
             runCatching {
                 val provider = future.get()
                 val selector = if (isFront) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
-                val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-                val capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build()
-                val recorder = Recorder.Builder()
-                    .setQualitySelector(QualitySelector.from(Quality.FHD))
+                val image = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .setFlashMode(when (flash) { 1 -> ImageCapture.FLASH_MODE_ON; 2 -> ImageCapture.FLASH_MODE_OFF; else -> ImageCapture.FLASH_MODE_AUTO })
                     .build()
+                val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+                val q = when (quality) { "4K" -> Quality.UHD; "HD" -> Quality.HD; "SD" -> Quality.SD; else -> Quality.FHD }
+                val recorder = Recorder.Builder().setQualitySelector(QualitySelector.from(q)).build()
                 val video = VideoCapture.withOutput(recorder)
                 provider.unbindAll()
-                val camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, capture, video)
-                imageCapture = capture
-                videoCapture = video
-                status = if (camera.cameraInfo.hasFlashUnit()) "جاهز للتصوير" else "جاهز للتصوير — بدون فلاش"
-            }.onFailure {
-                status = "تعذر تشغيل هذه الكاميرا، جرّب تبديل العدسة"
-            }
+                val bound = provider.bindToLifecycle(lifecycleOwner, selector, preview, image, video)
+                camera = bound; imageCapture = image; videoCapture = video
+                zoom = 1f
+                status = if (bound.cameraInfo.hasFlashUnit()) "جاهز — ${if (isFront) "أمامية" else "خلفية"}" else "جاهز — بدون فلاش"
+            }.onFailure { status = "تعذر تشغيل العدسة؛ جرّب التبديل" }
         }, ContextCompat.getMainExecutor(context))
     }
 
-    DisposableEffect(Unit) {
-        onDispose { recording?.stop() }
+    LaunchedEffect(zoom, exposure) {
+        camera?.cameraControl?.setZoomRatio(zoom.coerceIn(1f, camera?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 4f))
+        camera?.cameraControl?.setExposureCompensationIndex((exposure * 3f).roundToInt())
     }
+    LaunchedEffect(flash, camera) { camera?.cameraControl?.enableTorch(flash == 3) }
+    DisposableEffect(Unit) { onDispose { recording?.stop() } }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
-            factory = { previewView },
-            modifier = Modifier.fillMaxSize(),
-            update = { it.implementationMode = PreviewView.ImplementationMode.COMPATIBLE }
-        )
-        Column(
-            modifier = Modifier.fillMaxSize().padding(top = 28.dp, bottom = 18.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        AndroidView({ previewView }, Modifier.fillMaxSize())
+        if (grid) CompositionGrid(Modifier.fillMaxSize())
+        Column(Modifier.fillMaxSize().padding(top = 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                 Text("LUMIX PRO", color = Color.White, style = MaterialTheme.typography.titleMedium)
                 Text(status, color = Color(0xFF9BEFFF), style = MaterialTheme.typography.labelMedium)
+                IconButton(onClick = { isFront = !isFront }) { Icon(Icons.Default.Cameraswitch, "تبديل العدسة", tint = Color.White) }
+            }
+            if (showControls) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("PHOTO" to "صورة", "VIDEO" to "فيديو", "PRO" to "Pro").forEach { (key, label) ->
+                            FilterChip(selected = mode == key, onClick = { mode = key }, label = { Text(label) })
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { flash = (flash + 1) % 4 }) { Icon(when (flash) { 1 -> Icons.Default.FlashOn; 2 -> Icons.Default.FlashOff; 3 -> Icons.Default.FlashOn; else -> Icons.Default.FlashAuto }, "الفلاش", tint = Color.White) }
+                        IconButton(onClick = { grid = !grid }) { Icon(Icons.Default.GridOn, "شبكة التكوين", tint = if (grid) Color(0xFF66E6FF) else Color.White) }
+                        IconButton(onClick = { timer = when (timer) { 0 -> 3; 3 -> 5; 5 -> 10; else -> 0 } }) { Icon(Icons.Default.Timer, "المؤقت", tint = if (timer > 0) Color(0xFF66E6FF) else Color.White) }
+                        Text(if (timer == 0) "مؤقت: off" else "مؤقت: ${timer}s", color = Color.White)
+                    }
+                    Text("زوم ${"%.1f".format(zoom)}x", color = Color.White, modifier = Modifier.fillMaxWidth())
+                    Slider(value = zoom, onValueChange = { zoom = it }, valueRange = 1f..(camera?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 4f), modifier = Modifier.fillMaxWidth())
+                    if (mode == "PRO") {
+                        Text("التعريض ${if (exposure >= 0) "+" else ""}${"%.1f".format(exposure)} EV", color = Color.White, modifier = Modifier.fillMaxWidth())
+                        Slider(value = exposure, onValueChange = { exposure = it }, valueRange = -2f..2f, modifier = Modifier.fillMaxWidth())
+                    }
+                    if (mode == "VIDEO") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) { listOf("4K", "FHD", "HD", "SD").forEach { q -> FilterChip(selected = quality == q, onClick = { quality = q }, label = { Text(q) }) } }
+                    }
+                }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { isFront = !isFront }) {
-                        Icon(Icons.Default.Cameraswitch, "تبديل الكاميرا", tint = Color.White)
-                    }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 28.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    IconButton(onClick = { lastUri?.let { uri -> context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, context.contentResolver.getType(uri) ?: "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } }) { Icon(Icons.Default.PhotoLibrary, "فتح آخر لقطة", tint = Color.White, modifier = Modifier.size(30.dp)) }
                     Button(
                         onClick = {
-                            if (isRecording) {
-                                recording?.stop()
-                                recording = null
-                                isRecording = false
-                                status = "تم حفظ الفيديو"
-                            } else if (videoCapture != null) {
-                                val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                                val values = ContentValues().apply {
-                                    put(MediaStore.Video.Media.DISPLAY_NAME, "LUMIX_$name.mp4")
-                                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/LUMIX_PRO")
+                            if (mode == "VIDEO") {
+                                if (isRecording) { recording?.stop(); recording = null; isRecording = false; status = "تم حفظ الفيديو" }
+                                else videoCapture?.let { vc ->
+                                    val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                                    val values = ContentValues().apply { put(MediaStore.Video.Media.DISPLAY_NAME, "LUMIX_$name.mp4"); put(MediaStore.Video.Media.MIME_TYPE, "video/mp4"); if (Build.VERSION.SDK_INT >= 29) put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/LUMIX_PRO") }
+                                    val output = MediaStoreOutputOptions.Builder(context.contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI).setContentValues(values).build()
+                                    recording = vc.output.prepareRecording(context, output).start(ContextCompat.getMainExecutor(context)) { event -> when (event) { is VideoRecordEvent.Start -> { isRecording = true; status = "جارٍ تسجيل الفيديو" }; is VideoRecordEvent.Finalize -> { isRecording = false; if (!event.hasError()) { lastUri = event.outputResults.outputUri; status = "تم حفظ الفيديو" } else status = "فشل حفظ الفيديو" } } }
                                 }
-                                val output = MediaStoreOutputOptions.Builder(context.contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI).setContentValues(values).build()
-                                recording = videoCapture!!.output.prepareRecording(context, output).start(ContextCompat.getMainExecutor(context)) { event ->
-                                    when (event) {
-                                        is VideoRecordEvent.Start -> { isRecording = true; status = "جارٍ تسجيل الفيديو" }
-                                        is VideoRecordEvent.Finalize -> if (event.hasError()) { isRecording = false; status = "تعذر حفظ الفيديو" } else { lastUri = event.outputResults.outputUri.toString(); status = "تم حفظ الفيديو" }
-                                    }
-                                }
+                            } else {
+                                val capture = imageCapture ?: return@Button
+                                scope.launch { if (timer > 0) delay(timer * 1000L); val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()); val values = ContentValues().apply { put(MediaStore.Images.Media.DISPLAY_NAME, "LUMIX_$name.jpg"); put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg"); if (Build.VERSION.SDK_INT >= 29) put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/LUMIX_PRO") }; val output = ImageCapture.OutputFileOptions.Builder(context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values).build(); capture.takePicture(output, ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageSavedCallback { override fun onImageSaved(result: ImageCapture.OutputFileResults) { lastUri = result.savedUri; status = "تم حفظ الصورة" }; override fun onError(exception: ImageCaptureException) { status = "فشل حفظ الصورة" } }) }
                             }
-                        },
-                        modifier = Modifier.size(78.dp),
-                        shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isRecording) Color(0xFFE53935) else Color.White)
-                    ) { Icon(if (isRecording) Icons.Default.VideocamOff else Icons.Default.Videocam, "فيديو", tint = if (isRecording) Color.White else Color.Black) }
-                    IconButton(onClick = {
-                        val capture = imageCapture ?: return@IconButton
-                        val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                        val values = ContentValues().apply {
-                            put(MediaStore.Images.Media.DISPLAY_NAME, "LUMIX_$name.jpg")
-                            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/LUMIX_PRO")
-                        }
-                        val output = ImageCapture.OutputFileOptions.Builder(context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values).build()
-                        capture.takePicture(output, ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageSavedCallback {
-                            override fun onImageSaved(result: ImageCapture.OutputFileResults) { lastUri = result.savedUri?.toString(); status = "تم حفظ الصورة" }
-                            override fun onError(exception: ImageCaptureException) { status = "تعذر حفظ الصورة" }
-                        })
-                    }) { Icon(Icons.Default.CameraAlt, "التقاط صورة", tint = Color.White, modifier = Modifier.size(34.dp)) }
+                        }, modifier = Modifier.size(82.dp), shape = CircleShape, colors = ButtonDefaults.buttonColors(if (isRecording) Color(0xFFE53935) else Color.White)
+                    ) { Icon(if (isRecording) Icons.Default.VideocamOff else if (mode == "VIDEO") Icons.Default.Videocam else Icons.Default.CameraAlt, "التقاط", tint = if (isRecording || mode == "VIDEO") Color.White else Color.Black, modifier = Modifier.size(34.dp)) }
+                    IconButton(onClick = { showControls = !showControls }) { Text(if (showControls) "−" else "+", color = Color.White, style = MaterialTheme.typography.headlineMedium) }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(if (lastUri != null) "آخر لقطة محفوظة" else "اضغط الكاميرا لالتقاط صورة أو الفيديو للتسجيل", color = Color.White)
+                Text(if (lastUri == null) "جاهز للتصوير" else "تم الحفظ في المعرض", color = Color.White)
             }
         }
+    }
+}
+
+@Composable
+private fun CompositionGrid(modifier: Modifier) {
+    Canvas(modifier) {
+        val thirdW = size.width / 3f; val thirdH = size.height / 3f
+        drawLine(Color.White.copy(alpha = .35f), Offset(thirdW, 0f), Offset(thirdW, size.height), strokeWidth = 1f)
+        drawLine(Color.White.copy(alpha = .35f), Offset(thirdW * 2, 0f), Offset(thirdW * 2, size.height), strokeWidth = 1f)
+        drawLine(Color.White.copy(alpha = .35f), Offset(0f, thirdH), Offset(size.width, thirdH), strokeWidth = 1f)
+        drawLine(Color.White.copy(alpha = .35f), Offset(0f, thirdH * 2), Offset(size.width, thirdH * 2), strokeWidth = 1f)
     }
 }

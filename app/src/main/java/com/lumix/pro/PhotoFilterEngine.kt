@@ -20,34 +20,47 @@ object PhotoFilterEngine {
         val contrast: Float = 1f,
         val saturation: Float = 1f,
         val temperature: Float = 0f,
+        val shadows: Float = 0f,
+        val highlights: Float = 0f,
         val fade: Float = 0f,
         val vignette: Float = 0f,
         val sharpen: Float = 0f,
+        val grain: Float = 0f,
         val monochrome: Boolean = false
     )
 
-    fun recipe(name: String, brightness: Float, contrast: Float, sharpness: Float): Recipe {
+    fun recipe(name: String, brightness: Float, contrast: Float, sharpness: Float, shadows: Float = 0f, highlights: Float = 0f, saturation: Float = 1f, temperature: Float = 0f, grain: Float = 0f): Recipe {
         val base = when (name) {
-            "Cinematic" -> Recipe(contrast = 1.12f, saturation = 1.08f, temperature = 0.05f, vignette = .28f)
-            "Warm" -> Recipe(saturation = 1.12f, temperature = .16f, contrast = 1.04f)
-            "Cool" -> Recipe(saturation = 1.04f, temperature = -.14f, contrast = 1.05f)
+            "Cinematic" -> Recipe(contrast = 1.12f, saturation = 1.08f, temperature = 0.05f, shadows = .12f, highlights = -.10f, vignette = .28f)
+            "Teal Orange" -> Recipe(contrast = 1.16f, saturation = 1.16f, temperature = -.02f, shadows = .08f, highlights = .06f, vignette = .22f)
+            "Golden Hour" -> Recipe(saturation = 1.16f, temperature = .22f, shadows = .10f, highlights = -.06f)
+            "Moody" -> Recipe(contrast = 1.2f, saturation = .92f, shadows = -.12f, highlights = -.16f, vignette = .38f)
+            "Pastel" -> Recipe(contrast = .9f, saturation = .82f, shadows = .12f, highlights = -.04f, fade = .08f)
+            "Vapor" -> Recipe(contrast = 1.08f, saturation = 1.28f, temperature = -.08f, grain = .04f)
+            "Warm" -> Recipe(saturation = 1.12f, temperature = .16f, contrast = 1.04f, shadows = .05f)
+            "Cool" -> Recipe(saturation = 1.04f, temperature = -.14f, contrast = 1.05f, highlights = -.05f)
             "Noir" -> Recipe(contrast = 1.22f, saturation = 0f, monochrome = true, vignette = .32f)
             "Neon" -> Recipe(contrast = 1.2f, saturation = 1.38f, temperature = -.03f)
-            "Faded" -> Recipe(contrast = .92f, saturation = .88f, fade = .12f)
+            "Faded" -> Recipe(contrast = .92f, saturation = .88f, fade = .12f, highlights = -.08f)
             "Clean" -> Recipe(contrast = 1.06f, saturation = 1.02f)
             else -> Recipe()
         }
         return base.copy(
             brightness = base.brightness + brightness,
             contrast = base.contrast * contrast,
-            sharpen = sharpness
+            sharpen = sharpness,
+            shadows = (base.shadows + shadows).coerceIn(-1f, 1f),
+            highlights = (base.highlights + highlights).coerceIn(-1f, 1f),
+            saturation = base.saturation * saturation,
+            temperature = base.temperature + temperature,
+            grain = (base.grain + grain).coerceIn(0f, 1f)
         )
     }
 
-    suspend fun processAndSave(context: Context, source: Uri?, filter: String, brightness: Float, contrast: Float, sharpness: Float): Uri? = withContext(Dispatchers.IO) {
+    suspend fun processAndSave(context: Context, source: Uri?, filter: String, brightness: Float, contrast: Float, sharpness: Float, shadows: Float = 0f, highlights: Float = 0f, saturation: Float = 1f, temperature: Float = 0f, grain: Float = 0f): Uri? = withContext(Dispatchers.IO) {
         source ?: return@withContext null
         val sourceBitmap = context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it) } ?: return@withContext null
-        val processed = process(sourceBitmap, recipe(filter, brightness, contrast, sharpness))
+        val processed = process(sourceBitmap, recipe(filter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain))
         val values = ContentValues().apply {
             val stamp = System.currentTimeMillis()
             put(MediaStore.Images.Media.DISPLAY_NAME, "LUMIX_EDIT_$stamp.jpg")
@@ -80,6 +93,11 @@ object PhotoFilterEngine {
             var blue = Color.blue(pixels[i]).toFloat()
             val luma = .299f * red + .587f * green + .114f * blue
             if (r.monochrome) red = luma; green = luma; blue = luma
+            val shadowLift = r.shadows * (1f - luma / 255f).coerceIn(0f, 1f) * 92f
+            val highlightControl = r.highlights * (luma / 255f).coerceIn(0f, 1f) * 92f
+            red += shadowLift - highlightControl
+            green += shadowLift - highlightControl
+            blue += shadowLift - highlightControl
             val avg = (red + green + blue) / 3f
             red = avg + (red - avg) * r.saturation
             green = avg + (green - avg) * r.saturation
@@ -95,6 +113,12 @@ object PhotoFilterEngine {
             red = red * vignette + 128f * r.fade
             green = green * vignette + 128f * r.fade
             blue = blue * vignette + 128f * r.fade
+            if (r.grain > .001f) {
+                val noise = (((i * 1103515245L + 12345L) shr 16) and 255L).toFloat() / 255f - .5f
+                red += noise * 42f * r.grain
+                green += noise * 42f * r.grain
+                blue += noise * 42f * r.grain
+            }
             pixels[i] = Color.argb(255, clamp(red), clamp(green), clamp(blue))
         }
         out.setPixels(pixels, 0, src.width, 0, 0, src.width, src.height)

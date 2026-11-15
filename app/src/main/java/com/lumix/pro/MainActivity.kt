@@ -80,10 +80,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -146,8 +148,14 @@ private fun CameraHome() {
     var brightness by remember { mutableStateOf(0f) }
     var contrast by remember { mutableStateOf(1f) }
     var sharpness by remember { mutableStateOf(.18f) }
+    var shadows by remember { mutableStateOf(0f) }
+    var highlights by remember { mutableStateOf(0f) }
+    var saturation by remember { mutableStateOf(1f) }
+    var temperature by remember { mutableStateOf(0f) }
+    var grain by remember { mutableStateOf(0f) }
     var showFilterPanel by remember { mutableStateOf(false) }
     var processing by remember { mutableStateOf(false) }
+    var editorOpen by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("جاري تجهيز الكاميرا…") }
     var lastUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -185,7 +193,7 @@ private fun CameraHome() {
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView({ previewView }, Modifier.fillMaxSize())
-        LiveFilterOverlay(selectedFilter, brightness)
+        LiveFilterOverlay(selectedFilter, brightness + shadows * .18f - highlights * .12f)
         if (grid) CompositionGrid(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().padding(top = 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
@@ -206,7 +214,7 @@ private fun CameraHome() {
                             FilterChip(selected = showFilterPanel, onClick = { showFilterPanel = !showFilterPanel }, label = { Text(if (showFilterPanel) "إخفاء" else "ضبط") })
                         }
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            listOf("Natural", "Clean", "Cinematic", "Warm", "Cool", "Noir", "Neon", "Faded").forEach { name ->
+                            listOf("Natural", "Clean", "Cinematic", "Teal Orange", "Golden Hour", "Moody", "Pastel", "Vapor", "Warm", "Cool", "Noir", "Neon", "Faded").forEach { name ->
                                 FilterChip(selected = selectedFilter == name, onClick = { selectedFilter = name }, label = { Text(name) })
                             }
                         }
@@ -217,12 +225,22 @@ private fun CameraHome() {
                             Slider(value = contrast, onValueChange = { contrast = it }, valueRange = .65f..1.45f, modifier = Modifier.fillMaxWidth())
                             Text("حدة ${"%.2f".format(sharpness)}", color = Color.White, modifier = Modifier.fillMaxWidth())
                             Slider(value = sharpness, onValueChange = { sharpness = it }, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
+                            Text("ظلال ${"%.2f".format(shadows)}", color = Color.White, modifier = Modifier.fillMaxWidth())
+                            Slider(value = shadows, onValueChange = { shadows = it }, valueRange = -1f..1f, modifier = Modifier.fillMaxWidth())
+                            Text("إضاءات قوية ${"%.2f".format(highlights)}", color = Color.White, modifier = Modifier.fillMaxWidth())
+                            Slider(value = highlights, onValueChange = { highlights = it }, valueRange = -1f..1f, modifier = Modifier.fillMaxWidth())
+                            Text("تشبع ${"%.2f".format(saturation)}", color = Color.White, modifier = Modifier.fillMaxWidth())
+                            Slider(value = saturation, onValueChange = { saturation = it }, valueRange = 0f..2f, modifier = Modifier.fillMaxWidth())
+                            Text("حرارة اللون ${"%.2f".format(temperature)}", color = Color.White, modifier = Modifier.fillMaxWidth())
+                            Slider(value = temperature, onValueChange = { temperature = it }, valueRange = -1f..1f, modifier = Modifier.fillMaxWidth())
+                            Text("حبيبات سينمائية ${"%.2f".format(grain)}", color = Color.White, modifier = Modifier.fillMaxWidth())
+                            Slider(value = grain, onValueChange = { grain = it }, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
                             if (lastUri != null && !processing) {
                                 Button(onClick = {
                                     processing = true
                                     status = "تطبيق التعديلات…"
                                     scope.launch {
-                                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness)
+                                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain)
                                         if (edited != null) lastUri = edited
                                         processing = false
                                         status = if (edited != null) "تم حفظ تعديل جديد" else "تعذر تطبيق التعديل"
@@ -264,7 +282,7 @@ private fun CameraHome() {
                                 }
                             } else {
                                 val capture = imageCapture ?: return@Button
-                                scope.launch { if (timer > 0) delay(timer * 1000L); val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()); val values = ContentValues().apply { put(MediaStore.Images.Media.DISPLAY_NAME, "LUMIX_$name.jpg"); put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg"); if (Build.VERSION.SDK_INT >= 29) put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/LUMIX_PRO") }; val output = ImageCapture.OutputFileOptions.Builder(context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values).build(); capture.takePicture(output, ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageSavedCallback { override fun onImageSaved(result: ImageCapture.OutputFileResults) { lastUri = result.savedUri; status = "تتم معالجة ${selectedFilter}…"; processing = true; scope.launch { val edited = PhotoFilterEngine.processAndSave(context, result.savedUri, selectedFilter, brightness, contrast, sharpness); if (edited != null) lastUri = edited; processing = false; status = if (edited != null) "تم حفظ الصورة والنسخة المعدلة" else "تم حفظ الصورة الأصلية" } }; override fun onError(exception: ImageCaptureException) { status = "فشل حفظ الصورة" } }) }
+                                scope.launch { if (timer > 0) delay(timer * 1000L); val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()); val values = ContentValues().apply { put(MediaStore.Images.Media.DISPLAY_NAME, "LUMIX_$name.jpg"); put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg"); if (Build.VERSION.SDK_INT >= 29) put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/LUMIX_PRO") }; val output = ImageCapture.OutputFileOptions.Builder(context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values).build(); capture.takePicture(output, ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageSavedCallback { override fun onImageSaved(result: ImageCapture.OutputFileResults) { lastUri = result.savedUri; status = "تتم معالجة ${selectedFilter}…"; processing = true; scope.launch { val edited = PhotoFilterEngine.processAndSave(context, result.savedUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain); if (edited != null) lastUri = edited; processing = false; status = if (edited != null) "تم حفظ الصورة والنسخة المعدلة" else "تم حفظ الصورة الأصلية" } }; override fun onError(exception: ImageCaptureException) { status = "فشل حفظ الصورة" } }) }
                             }
                         }, modifier = Modifier.size(82.dp), shape = CircleShape, colors = ButtonDefaults.buttonColors(if (isRecording) Color(0xFFE53935) else Color.White)
                     ) { Icon(if (isRecording) Icons.Default.VideocamOff else if (mode == "VIDEO") Icons.Default.Videocam else Icons.Default.CameraAlt, "التقاط", tint = if (isRecording || mode == "VIDEO") Color.White else Color.Black, modifier = Modifier.size(34.dp)) }
@@ -274,11 +292,30 @@ private fun CameraHome() {
                     Text(if (processing) "جاري إنشاء النسخة المعدلة…" else if (lastUri == null) "جاهز للتصوير" else "تم الحفظ في المعرض", color = Color.White)
                     if (lastUri != null && !processing) {
                         Text("تعديل آخر لقطة", color = Color(0xFF9BEFFF), modifier = Modifier.clickable {
-                            showControls = true; showFilterPanel = true
+                            showControls = true; showFilterPanel = true; editorOpen = true
                         })
                     }
                 }
             }
+        }
+        if (editorOpen && lastUri != null) {
+            StudioEditor(
+                uri = lastUri!!,
+                filter = selectedFilter,
+                onFilter = { selectedFilter = it },
+                onClose = { editorOpen = false },
+                onApply = {
+                    processing = true
+                    status = "تطبيق تعديلات Studio…"
+                    scope.launch {
+                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain)
+                        if (edited != null) lastUri = edited
+                        processing = false
+                        status = if (edited != null) "تم حفظ الصورة المعدلة" else "تعذر حفظ التعديل"
+                        editorOpen = false
+                    }
+                }
+            )
         }
     }
 }

@@ -21,11 +21,11 @@ class SensorsHelper(context: Context) : SensorEventListener {
 
     fun start() {
         val s = accelerometer ?: return
-        sensorManager?.registerListener(this, s, SensorManager.SENSOR_DELAY_UI)
+        runCatching { sensorManager?.registerListener(this, s, SensorManager.SENSOR_DELAY_UI) }
     }
 
     fun stop() {
-        sensorManager?.unregisterListener(this)
+        runCatching { sensorManager?.unregisterListener(this) }
     }
 
     override fun onSensorChanged(event: SensorEvent?) {

@@ -121,7 +121,12 @@ class CameraController(
 
     fun attachPreview(surfaceProvider: Preview.SurfaceProvider) {
         previewSurfaceProvider = surfaceProvider
-        preview?.setSurfaceProvider(surfaceProvider)
+        runCatching {
+            preview?.setSurfaceProvider(surfaceProvider)
+            if (cameraProvider == null) initCamera() else bindUseCases()
+        }.onFailure { error ->
+            Log.e(tag, "Preview attachment failed; camera remains optional", error)
+        }
     }
 
     fun bindUseCases() {

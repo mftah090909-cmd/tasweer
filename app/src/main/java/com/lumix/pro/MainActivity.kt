@@ -34,7 +34,6 @@ class MainActivity : ComponentActivity() {
     ) { results ->
         hasCameraPermission = results[android.Manifest.permission.CAMERA] == true
         if (hasCameraPermission) {
-            controller.bindUseCases()
             startSensors()
         }
         setContent { AppUi() }
@@ -64,7 +63,6 @@ class MainActivity : ComponentActivity() {
 
         hasCameraPermission = PermissionHandler.hasCameraPermission(this)
         if (hasCameraPermission) {
-            controller.bindUseCases()
             startSensors()
         }
 
@@ -107,7 +105,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startSensors() {
         sensors.start()
-        audioMeter.start()
+        if (PermissionHandler.hasAudioPermission(this)) audioMeter.start()
         batteryMonitor.start()
     }
 

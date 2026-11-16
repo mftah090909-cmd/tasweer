@@ -69,6 +69,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -105,11 +106,22 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun StableCameraApp() {
     val context = LocalContext.current
+    val appPrefs = remember { context.getSharedPreferences("lumix_app", 0) }
+    var darkMode by remember { mutableStateOf(appPrefs.getBoolean("dark", true)) }
+    var language by remember { mutableStateOf(appPrefs.getString("language", "العربية") ?: "العربية") }
     var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
-    MaterialTheme(colorScheme = darkColorScheme()) {
+    MaterialTheme(colorScheme = if (darkMode) darkColorScheme() else lightColorScheme()) {
         Surface(Modifier.fillMaxSize(), color = Color.Black) {
-            if (granted) CameraHome() else PermissionScreen { request.launch(Manifest.permission.CAMERA) }
+            if (granted) CameraHome(darkMode, language, onDark = { value -> darkMode = value; appPrefs.edit().putBoolean("dark", value).apply() }, onLanguage = { value ->
+                language = value
+                appPrefs.edit().putString("language", value).apply()
+                val tag = mapOf("العربية" to "ar", "English" to "en", "Français" to "fr", "Español" to "es", "Türkçe" to "tr")[value] ?: "ar"
+                val config = context.resources.configuration
+                config.setLocale(Locale.forLanguageTag(tag))
+                context.resources.updateConfiguration(config, context.resources.displayMetrics)
+                (context as? ComponentActivity)?.recreate()
+            }) else PermissionScreen { request.launch(Manifest.permission.CAMERA) }
         }
     }
 }
@@ -127,7 +139,7 @@ private fun PermissionScreen(onGrant: () -> Unit) {
 }
 
 @Composable
-private fun CameraHome() {
+private fun CameraHome(darkMode: Boolean, language: String, onDark: (Boolean) -> Unit, onLanguage: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -150,7 +162,7 @@ private fun CameraHome() {
     var zoom by remember { mutableStateOf(1f) }
     var exposure by remember { mutableStateOf(0f) }
     var quality by remember { mutableStateOf("FHD") }
-    var showControls by remember { mutableStateOf(true) }
+    var showControls by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf("Natural") }
     var brightness by remember { mutableStateOf(0f) }
     var contrast by remember { mutableStateOf(1f) }
@@ -166,6 +178,8 @@ private fun CameraHome() {
     var rotationDegrees by remember { mutableStateOf(0) }
     var focusLocked by remember { mutableStateOf(false) }
     var lastFocusPoint by remember { mutableStateOf("تلقائي") }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var assistantVisible by remember { mutableStateOf(true) }
     val prefs = remember { context.getSharedPreferences("lumix_preset", 0) }
 
     LaunchedEffect(isFront, quality, flash) {
@@ -219,9 +233,19 @@ private fun CameraHome() {
         if (grid) CompositionGrid(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().padding(top = 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Text("LUMIX PRO", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                Text(if (language == "English") "LUMIX PRO" else "لومكس برو", color = Color.White, style = MaterialTheme.typography.titleMedium)
                 Text(status, color = Color(0xFF9BEFFF), style = MaterialTheme.typography.labelMedium)
-                IconButton(onClick = { isFront = !isFront }) { Icon(Icons.Default.Cameraswitch, "تبديل العدسة", tint = Color.White) }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LiquidAction("⚙", active = settingsOpen, onClick = { settingsOpen = !settingsOpen })
+                    IconButton(onClick = { isFront = !isFront }) { Icon(Icons.Default.Cameraswitch, "تبديل العدسة", tint = Color.White) }
+                }
+            }
+            if (assistantVisible) {
+                val advice = recommendShot(mode, exposure, flash, grid)
+                AssistantGlassChip(advice) {
+                    when (advice.apply) { "الشبكة" -> grid = true; "+EV" -> exposure = (exposure + .7f).coerceAtMost(2f); "-EV" -> exposure = (exposure - .7f).coerceAtLeast(-2f); "Auto" -> flash = 0 }
+                    assistantVisible = false
+                }
             }
             if (showControls) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).liquidGlass(RoundedCornerShape(28.dp)).padding(12.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -365,6 +389,9 @@ private fun CameraHome() {
                     }
                 }
             )
+        }
+        if (settingsOpen) {
+            AppSettingsSheet(darkMode, language, quality, onDark = onDark, onLanguage = onLanguage, onQuality = { quality = it }, onClose = { settingsOpen = false })
         }
     }
 }

@@ -1,0 +1,10 @@
+package com.lumix.pro
+
+fun uiText(language: String, key: String): String {
+    val ar = mapOf("settings" to "إعدادات التطبيق", "close" to "إغلاق", "appearance" to "المظهر", "dark" to "ليلي", "light" to "نهاري", "language" to "لغة الواجهة", "quality" to "جودة الفيديو الافتراضية", "saved" to "الإعدادات تحفظ محليًا وتُطبق على التصوير القادم", "photo" to "صورة", "video" to "فيديو", "tune" to "ضبط", "hide" to "إخفاء", "import" to "استيراد", "capture" to "التقاط")
+    val en = mapOf("settings" to "App settings", "close" to "Close", "appearance" to "Appearance", "dark" to "Dark", "light" to "Light", "language" to "Interface language", "quality" to "Default video quality", "saved" to "Saved locally and applied to the next capture", "photo" to "Photo", "video" to "Video", "tune" to "Adjust", "hide" to "Hide", "import" to "Import", "capture" to "Capture")
+    val fr = mapOf("settings" to "Réglages", "close" to "Fermer", "appearance" to "Apparence", "dark" to "Sombre", "light" to "Clair", "language" to "Langue", "quality" to "Qualité vidéo", "saved" to "Enregistré localement", "photo" to "Photo", "video" to "Vidéo", "tune" to "Régler", "hide" to "Masquer", "import" to "Importer", "capture" to "Capturer")
+    val es = mapOf("settings" to "Ajustes", "close" to "Cerrar", "appearance" to "Apariencia", "dark" to "Oscuro", "light" to "Claro", "language" to "Idioma", "quality" to "Calidad de vídeo", "saved" to "Guardado localmente", "photo" to "Foto", "video" to "Vídeo", "tune" to "Ajustar", "hide" to "Ocultar", "import" to "Importar", "capture" to "Capturar")
+    val tr = mapOf("settings" to "Ayarlar", "close" to "Kapat", "appearance" to "Görünüm", "dark" to "Koyu", "light" to "Açık", "language" to "Arayüz dili", "quality" to "Varsayılan video kalitesi", "saved" to "Yerel olarak kaydedildi", "photo" to "Fotoğraf", "video" to "Video", "tune" to "Ayarla", "hide" to "Gizle", "import" to "İçe aktar", "capture" to "Çek")
+    return when (language) { "English" -> en[key]; "Français" -> fr[key]; "Español" -> es[key]; "Türkçe" -> tr[key]; else -> ar[key] } ?: key
+}

@@ -21,30 +21,30 @@ import androidx.compose.ui.unit.dp
 fun AppSettingsSheet(dark: Boolean, language: String, quality: String, onDark: (Boolean) -> Unit, onLanguage: (String) -> Unit, onQuality: (String) -> Unit, onClose: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(Color(0xF21A222B), RoundedCornerShape(26.dp)).border(1.dp, Color.White.copy(alpha = .2f), RoundedCornerShape(26.dp)).padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-            Text("إعدادات التطبيق", color = Color.White)
-            LiquidAction("إغلاق", onClick = onClose)
+            Text(uiText(language, "settings"), color = Color.White)
+            LiquidAction(uiText(language, "close"), onClick = onClose)
         }
         Spacer(Modifier.height(10.dp))
-        Text("المظهر", color = Color.LightGray)
+        Text(uiText(language, "appearance"), color = Color.LightGray)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = dark, onClick = { onDark(true) }, label = { Text("ليلي") })
-            FilterChip(selected = !dark, onClick = { onDark(false) }, label = { Text("نهاري") })
+            FilterChip(selected = dark, onClick = { onDark(true) }, label = { Text(uiText(language, "dark")) })
+            FilterChip(selected = !dark, onClick = { onDark(false) }, label = { Text(uiText(language, "light")) })
         }
         Spacer(Modifier.height(8.dp))
-        Text("لغة الواجهة", color = Color.LightGray)
+        Text(uiText(language, "language"), color = Color.LightGray)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("العربية", "English", "Français", "Español", "Türkçe").forEach { item ->
                 FilterChip(selected = language == item, onClick = { onLanguage(item) }, label = { Text(item) })
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text("جودة الفيديو الافتراضية", color = Color.LightGray)
+        Text(uiText(language, "quality"), color = Color.LightGray)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("4K", "FHD", "HD", "SD").forEach { item ->
                 FilterChip(selected = quality == item, onClick = { onQuality(item) }, label = { Text(item) })
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text("الإعدادات تحفظ محليًا وتُطبق على التصوير القادم", color = Color(0xFF9BEFFF))
+        Text(uiText(language, "saved"), color = Color(0xFF9BEFFF))
     }
 }

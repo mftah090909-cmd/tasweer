@@ -13,8 +13,8 @@ android {
         applicationId = "com.lumix.pro"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "2.6.0"
+        versionCode = 12
+        versionName = "2.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -107,6 +107,7 @@ dependencies {
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-video:2.7.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Media3 video playback & transformation
     val media3Version = "1.4.1"

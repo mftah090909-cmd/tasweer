@@ -99,6 +99,9 @@ import kotlin.math.roundToInt
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val savedLanguage = getSharedPreferences("lumix_app", 0).getString("language", "العربية") ?: "العربية"
+        val tag = mapOf("العربية" to "ar", "English" to "en", "Français" to "fr", "Español" to "es", "Türkçe" to "tr")[savedLanguage] ?: "ar"
+        resources.configuration.setLocale(Locale.forLanguageTag(tag))
         setContent { StableCameraApp() }
     }
 }
@@ -111,7 +114,9 @@ private fun StableCameraApp() {
     var language by remember { mutableStateOf(appPrefs.getString("language", "العربية") ?: "العربية") }
     var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
-    MaterialTheme(colorScheme = if (darkMode) darkColorScheme() else lightColorScheme()) {
+    val glassDark = darkColorScheme(primary = Color.White.copy(alpha = .14f), onPrimary = Color.White, primaryContainer = Color.White.copy(alpha = .10f), onPrimaryContainer = Color.White, secondaryContainer = Color.White.copy(alpha = .10f), onSecondaryContainer = Color.White)
+    val glassLight = lightColorScheme(primary = Color(0xFF315C63).copy(alpha = .72f), onPrimary = Color.White, primaryContainer = Color.White.copy(alpha = .34f), onPrimaryContainer = Color(0xFF17343A), secondaryContainer = Color.White.copy(alpha = .34f), onSecondaryContainer = Color(0xFF17343A))
+    MaterialTheme(colorScheme = if (darkMode) glassDark else glassLight) {
         Surface(Modifier.fillMaxSize(), color = Color.Black) {
             if (granted) CameraHome(darkMode, language, onDark = { value -> darkMode = value; appPrefs.edit().putBoolean("dark", value).apply() }, onLanguage = { value ->
                 language = value
@@ -180,6 +185,8 @@ private fun CameraHome(darkMode: Boolean, language: String, onDark: (Boolean) ->
     var lastFocusPoint by remember { mutableStateOf("تلقائي") }
     var settingsOpen by remember { mutableStateOf(false) }
     var assistantVisible by remember { mutableStateOf(true) }
+    var aiOpen by remember { mutableStateOf(false) }
+    var aiKey by remember { mutableStateOf("") }
     val prefs = remember { context.getSharedPreferences("lumix_preset", 0) }
 
     LaunchedEffect(isFront, quality, flash) {
@@ -236,6 +243,7 @@ private fun CameraHome(darkMode: Boolean, language: String, onDark: (Boolean) ->
                 Text(if (language == "English") "LUMIX PRO" else "لومكس برو", color = Color.White, style = MaterialTheme.typography.titleMedium)
                 Text(status, color = Color(0xFF9BEFFF), style = MaterialTheme.typography.labelMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LiquidAction("AI", active = aiOpen, onClick = { aiOpen = !aiOpen })
                     LiquidAction("⚙", active = settingsOpen, onClick = { settingsOpen = !settingsOpen })
                     IconButton(onClick = { isFront = !isFront }) { Icon(Icons.Default.Cameraswitch, "تبديل العدسة", tint = Color.White) }
                 }
@@ -250,14 +258,14 @@ private fun CameraHome(darkMode: Boolean, language: String, onDark: (Boolean) ->
             if (showControls) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).liquidGlass(RoundedCornerShape(28.dp)).padding(12.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("PHOTO" to "صورة", "VIDEO" to "فيديو", "PRO" to "Pro").forEach { (key, label) ->
+                            listOf("PHOTO" to uiText(language, "photo"), "VIDEO" to uiText(language, "video"), "PRO" to "Pro").forEach { (key, label) ->
                             FilterChip(selected = mode == key, onClick = { mode = key }, label = { Text(label) })
                         }
                     }
                     if (mode != "VIDEO") {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("فلتر المعاينة", color = Color.White, style = MaterialTheme.typography.labelLarge)
-                            FilterChip(selected = showFilterPanel, onClick = { showFilterPanel = !showFilterPanel }, label = { Text(if (showFilterPanel) "إخفاء" else "ضبط") })
+                            FilterChip(selected = showFilterPanel, onClick = { showFilterPanel = !showFilterPanel }, label = { Text(if (showFilterPanel) uiText(language, "hide") else uiText(language, "tune")) })
                         }
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             listOf("Natural", "Clean", "Cinematic", "Teal Orange", "Golden Hour", "Moody", "Pastel", "Vapor", "Warm", "Cool", "Noir", "Neon", "Faded").forEach { name ->
@@ -301,7 +309,7 @@ private fun CameraHome(darkMode: Boolean, language: String, onDark: (Boolean) ->
                                     processing = true
                                     status = "تطبيق التعديلات…"
                                     scope.launch {
-                                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain, rotationDegrees)
+                                        val edited = runCatching { PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain, rotationDegrees) }.getOrNull()
                                         if (edited != null) lastUri = edited
                                         processing = false
                                         status = if (edited != null) "تم حفظ تعديل جديد" else "تعذر تطبيق التعديل"
@@ -335,7 +343,7 @@ private fun CameraHome(darkMode: Boolean, language: String, onDark: (Boolean) ->
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 28.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     IconButton(onClick = { lastUri?.let { uri -> context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, context.contentResolver.getType(uri) ?: "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } }) { Icon(Icons.Default.PhotoLibrary, "فتح آخر لقطة", tint = Color.White, modifier = Modifier.size(30.dp)) }
-                    Button(onClick = { pickImage.launch("image/*") }, colors = ButtonDefaults.buttonColors(containerColor = Color(0x6628D7C0))) { Text("استيراد") }
+                    Button(onClick = { pickImage.launch("image/*") }, colors = ButtonDefaults.buttonColors(containerColor = Color(0x6628D7C0))) { Text(uiText(language, "import")) }
                     Button(
                         onClick = {
                             if (mode == "VIDEO") {
@@ -381,7 +389,7 @@ private fun CameraHome(darkMode: Boolean, language: String, onDark: (Boolean) ->
                     processing = true
                     status = "تطبيق تعديلات Studio…"
                     scope.launch {
-                        val edited = PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain, rotationDegrees)
+                        val edited = runCatching { PhotoFilterEngine.processAndSave(context, lastUri, selectedFilter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain, rotationDegrees) }.getOrNull()
                         if (edited != null) lastUri = edited
                         processing = false
                         status = if (edited != null) "تم حفظ الصورة المعدلة" else "تعذر حفظ التعديل"
@@ -392,6 +400,9 @@ private fun CameraHome(darkMode: Boolean, language: String, onDark: (Boolean) ->
         }
         if (settingsOpen) {
             AppSettingsSheet(darkMode, language, quality, onDark = onDark, onLanguage = onLanguage, onQuality = { quality = it }, onClose = { settingsOpen = false })
+        }
+        if (aiOpen) {
+            AiPhotographyChat(aiKey, onApiKey = { aiKey = it }, onClose = { aiOpen = false })
         }
     }
 }

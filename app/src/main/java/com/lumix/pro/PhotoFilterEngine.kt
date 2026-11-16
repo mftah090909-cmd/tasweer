@@ -60,7 +60,16 @@ object PhotoFilterEngine {
 
     suspend fun processAndSave(context: Context, source: Uri?, filter: String, brightness: Float, contrast: Float, sharpness: Float, shadows: Float = 0f, highlights: Float = 0f, saturation: Float = 1f, temperature: Float = 0f, grain: Float = 0f, rotation: Int = 0): Uri? = withContext(Dispatchers.IO) {
         source ?: return@withContext null
-        val sourceBitmap = context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it) } ?: return@withContext null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        val longest = max(bounds.outWidth, bounds.outHeight)
+        val sample = if (longest > 3000) {
+            var value = 1
+            while (longest / value > 3000) value *= 2
+            value
+        } else 1
+        val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
+        val sourceBitmap = context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it, null, decodeOptions) } ?: return@withContext null
         val processed = process(sourceBitmap, recipe(filter, brightness, contrast, sharpness, shadows, highlights, saturation, temperature, grain))
         val finalBitmap = if (rotation % 360 != 0) {
             Bitmap.createBitmap(processed, 0, 0, processed.width, processed.height, Matrix().apply { postRotate(rotation.toFloat()) }, true).also { processed.recycle() }
@@ -70,11 +79,13 @@ object PhotoFilterEngine {
             put(MediaStore.Images.Media.DISPLAY_NAME, "LUMIX_EDIT_$stamp.jpg")
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/LUMIX_PRO/Edits")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         if (uri == null) return@withContext null
         val ok = context.contentResolver.openOutputStream(uri)?.use { finalBitmap.compress(Bitmap.CompressFormat.JPEG, 94, it) } == true
         if (!ok) context.contentResolver.delete(uri, null, null)
+        else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
         finalBitmap.recycle()
         sourceBitmap.recycle()
         if (ok) uri else null
